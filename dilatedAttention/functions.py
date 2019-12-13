@@ -13,12 +13,12 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 _src_path = os.path.join(curr_dir, "src")
 _build_path = os.path.join(curr_dir, "build")
 os.makedirs(_build_path, exist_ok=True)
-da = load(name="da",
+pyda = load(name="pyda",
             extra_cflags=["-O3"],
             build_directory=_build_path,
             verbose=True,
             sources = [os.path.join(_src_path, f) for f in [
-                "lib_cffi.cpp", "ca.cu"
+                "lib_da.cpp", "da.cu"
                 ]],
             extra_cuda_cflags=["--expt-extended-lambda"])
 
@@ -27,12 +27,12 @@ def _check_contiguous(*args):
         raise ValueError("Non-contiguous input")
 
 
-class CA_Weight(autograd.Function):
+class DA_Weight(autograd.Function):
     @staticmethod
     def forward(ctx, t, f):
         # Save context
         n, c, h, w = t.size()
-        size = (n, h+w-1, h, w)
+        size = (n, 9, h, w)
         weight = torch.zeros(size, dtype=t.dtype, layout=t.layout, device=t.device)
 
         rcca.ca_forward_cuda(t, f, weight)
@@ -56,7 +56,7 @@ class CA_Weight(autograd.Function):
 
         return dt, df
 
-class CA_Map(autograd.Function):
+class DA_Map(autograd.Function):
     @staticmethod
     def forward(ctx, weight, g):
         # Save context
@@ -82,20 +82,20 @@ class CA_Map(autograd.Function):
 
         return dw, dg
 
-ca_weight = CA_Weight.apply
-ca_map = CA_Map.apply
+da_weight = DA_Weight.apply
+da_map = DA_Map.apply
 
 
-class CrissCrossAttention(nn.Module):
-    """ Criss-Cross Attention Module"""
+class DilatedAttention(nn.Module):
+    """ Dilated Attention Module"""
     def __init__(self,in_dim):
-        super(CrissCrossAttention,self).__init__()
+        super(DilatedAttention,self).__init__()
         self.chanel_in = in_dim
 
         self.query_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim//8 , kernel_size= 1)
         self.key_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim//8 , kernel_size= 1)
         self.value_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim , kernel_size= 1)
-        self.gamma = nn.Parameter(torch.zeros(1))
+        #self.gamma = nn.Parameter(torch.zeros(1))
 
     def forward(self, x):
         proj_query = self.query_conv(x)
@@ -105,16 +105,16 @@ class CrissCrossAttention(nn.Module):
         energy = ca_weight(proj_query, proj_key)
         attention = F.softmax(energy, 1)
         out = ca_map(attention, proj_value)
-        out = self.gamma*out + x
+        #out = self.gamma*out + x
         return out
 
 
 
-__all__ = ["CrissCrossAttention", "ca_weight", "ca_map"]
+__all__ = ["DilatedAttention", "da_weight", "da_map"]
 
 
 if __name__ == "__main__":
-    ca = CrissCrossAttention(256).cuda()
+    ca = DilatedAttention(256).cuda()
     x = torch.zeros(1, 8, 10, 10).cuda() + 1
     y = torch.zeros(1, 8, 10, 10).cuda() + 2
     z = torch.zeros(1, 64, 10, 10).cuda() + 3
