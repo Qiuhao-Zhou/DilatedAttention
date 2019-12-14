@@ -35,7 +35,7 @@ class DA_Weight(autograd.Function):
         size = (n, 9, h, w)
         weight = torch.zeros(size, dtype=t.dtype, layout=t.layout, device=t.device)
 
-        rcca.ca_forward_cuda(t, f, weight)
+        pyda.da_forward_cuda(t, f, weight)
         
         # Output
         ctx.save_for_backward(t, f)
@@ -50,7 +50,7 @@ class DA_Weight(autograd.Function):
         dt = torch.zeros_like(t)
         df = torch.zeros_like(f)
 
-        rcca.ca_backward_cuda(dw.contiguous(), t, f, dt, df)
+        pyda.da_backward_cuda(dw.contiguous(), t, f, dt, df)
 
         _check_contiguous(dt, df)
 
@@ -61,7 +61,7 @@ class DA_Map(autograd.Function):
     def forward(ctx, weight, g):
         # Save context
         out = torch.zeros_like(g)
-        rcca.ca_map_forward_cuda(weight, g, out)
+        pyda.da_map_forward_cuda(weight, g, out)
         
         # Output
         ctx.save_for_backward(weight, g)
@@ -76,7 +76,7 @@ class DA_Map(autograd.Function):
         dw = torch.zeros_like(weight)
         dg = torch.zeros_like(g)
 
-        rcca.ca_map_backward_cuda(dout.contiguous(), weight, g, dw, dg)
+        pyda.da_map_backward_cuda(dout.contiguous(), weight, g, dw, dg)
 
         _check_contiguous(dw, dg)
 
