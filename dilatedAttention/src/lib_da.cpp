@@ -6,17 +6,17 @@
 
 extern THCState *state;
 
-int da_forward_cuda(const at::Tensor& t, const at::Tensor& f, at::Tensor& attention) {
+int da_forward_cuda(const at::Tensor& t, const at::Tensor& f, at::Tensor& attention, int dilation) {
   cudaStream_t stream = THCState_getCurrentStream(state);
   int N, C, H, W;
   N = t.size(0); C = t.size(1); H = t.size(2); W = t.size(3);
   float * t_data = t.data<float>();
   float * f_data = f.data<float>();
   float * attention_data = attention.data<float>();
-  return _da_forward_cuda(N, C, H, W, t_data, f_data, attention_data, stream);
+  return _da_forward_cuda(N, C, H, W, dilation, t_data, f_data, attention_data, stream);
 }
 
-int da_backward_cuda(const at::Tensor& d_attention, const at::Tensor& t, const at::Tensor& f, at::Tensor& dt, at::Tensor& df) {
+int da_backward_cuda(const at::Tensor& d_attention, const at::Tensor& t, const at::Tensor& f, at::Tensor& dt, at::Tensor& df, int dilation) {
 
   cudaStream_t stream = THCState_getCurrentStream(state);
   int N, C, H, W;
@@ -26,10 +26,10 @@ int da_backward_cuda(const at::Tensor& d_attention, const at::Tensor& t, const a
   float * dt_data = dt.data<float>();
   float * df_data = df.data<float>();
   float * d_attention_data = d_attention.data<float>();
-  return _da_backward_cuda(N, C, H, W, d_attention_data, t_data, f_data, dt_data, df_data, stream);
+  return _da_backward_cuda(N, C, H, W, dilation, d_attention_data, t_data, f_data, dt_data, df_data, stream);
 }
 
-int da_map_forward_cuda(const at::Tensor& attention, const at::Tensor& g, at::Tensor& out) {
+int da_map_forward_cuda(const at::Tensor& attention, const at::Tensor& g, at::Tensor& out, int dilation) {
   cudaStream_t stream = THCState_getCurrentStream(state);
 
   int N, C, H, W;
@@ -39,11 +39,11 @@ int da_map_forward_cuda(const at::Tensor& attention, const at::Tensor& g, at::Te
   const float *g_data = g.data<float>();
   float *out_data = out.data<float>();
 
-  return _da_map_forward_cuda(N, C, H, W, attention_data, g_data, out_data, stream);
+  return _da_map_forward_cuda(N, C, H, W, dilation, attention_data, g_data, out_data, stream);
 }
 
 int da_map_backward_cuda(const at::Tensor& dout, const at::Tensor& attention, const at::Tensor& g,
-                     at::Tensor& d_attention, at::Tensor& dg) {
+                     at::Tensor& d_attention, at::Tensor& dg, int dilation) {
   cudaStream_t stream = THCState_getCurrentStream(state);
 
   int N, C, H, W;
@@ -55,7 +55,7 @@ int da_map_backward_cuda(const at::Tensor& dout, const at::Tensor& attention, co
   float *d_attention_data = d_attention.data<float>();
   float *dg_data = dg.data<float>();
 
-  return _da_map_backward_cuda(N, C, H, W, dout_data, attention_data, g_data, d_attention_data, dg_data, stream);
+  return _da_map_backward_cuda(N, C, H, W, dilation, dout_data, attention_data, g_data, d_attention_data, dg_data, stream);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m){

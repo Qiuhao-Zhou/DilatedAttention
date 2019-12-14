@@ -35,7 +35,7 @@ class DA_Weight(autograd.Function):
         size = (n, 9, h, w)
         weight = torch.zeros(size, dtype=t.dtype, layout=t.layout, device=t.device)
 
-        pyda.da_forward_cuda(t, f, weight)
+        pyda.da_forward_cuda(t, f, weight, 1)
         
         # Output
         ctx.save_for_backward(t, f)
@@ -50,7 +50,7 @@ class DA_Weight(autograd.Function):
         dt = torch.zeros_like(t)
         df = torch.zeros_like(f)
 
-        pyda.da_backward_cuda(dw.contiguous(), t, f, dt, df)
+        pyda.da_backward_cuda(dw.contiguous(), t, f, dt, df, 1)
 
         _check_contiguous(dt, df)
 
@@ -61,7 +61,7 @@ class DA_Map(autograd.Function):
     def forward(ctx, weight, g):
         # Save context
         out = torch.zeros_like(g)
-        pyda.da_map_forward_cuda(weight, g, out)
+        pyda.da_map_forward_cuda(weight, g, out, 1)
         
         # Output
         ctx.save_for_backward(weight, g)
@@ -76,7 +76,7 @@ class DA_Map(autograd.Function):
         dw = torch.zeros_like(weight)
         dg = torch.zeros_like(g)
 
-        pyda.da_map_backward_cuda(dout.contiguous(), weight, g, dw, dg)
+        pyda.da_map_backward_cuda(dout.contiguous(), weight, g, dw, dg, 1)
 
         _check_contiguous(dw, dg)
 
@@ -97,14 +97,15 @@ class DilatedAttention(nn.Module):
         self.value_conv = nn.Conv2d(in_channels = in_dim , out_channels = in_dim , kernel_size= 1)
         #self.gamma = nn.Parameter(torch.zeros(1))
 
-    def forward(self, x):
-        proj_query = self.query_conv(x)
-        proj_key = self.key_conv(x)
-        proj_value = self.value_conv(x)
+    def forward(self, a, b, c):
+        #proj_query = self.query_conv(x)
+        #proj_key = self.key_conv(x)
+        #proj_value = self.value_conv(x)
 
-        energy = ca_weight(proj_query, proj_key)
+        energy = da_weight(a, b)
+        self.attention = energy
         attention = F.softmax(energy, 1)
-        out = ca_map(attention, proj_value)
+        out = da_map(attention, c)
         #out = self.gamma*out + x
         return out
 
@@ -115,8 +116,9 @@ __all__ = ["DilatedAttention", "da_weight", "da_map"]
 
 if __name__ == "__main__":
     ca = DilatedAttention(256).cuda()
-    x = torch.zeros(1, 8, 10, 10).cuda() + 1
-    y = torch.zeros(1, 8, 10, 10).cuda() + 2
-    z = torch.zeros(1, 64, 10, 10).cuda() + 3
+    x = torch.zeros(1, 3, 6, 6).cuda() + 1
+    y = torch.zeros(1, 3, 6, 6).cuda() + 2
+    z = torch.zeros(1, 3, 6, 6).cuda() + 3
     out = ca(x, y, z)
     print (out)
+    print(ca.attention.permute((0,2,3,1)))

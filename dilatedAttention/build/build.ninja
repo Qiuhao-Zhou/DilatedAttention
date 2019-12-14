@@ -1,0 +1,26 @@
+ninja_required_version = 1.3
+cxx = c++
+nvcc = /usr/local/cuda/bin/nvcc
+
+cflags = -DTORCH_EXTENSION_NAME=pyda -DTORCH_API_INCLUDE_EXTENSION_H -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include/torch/csrc/api/include -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include/TH -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include/THC -isystem /usr/local/cuda/include -isystem /opt/conda/include/python3.6m -D_GLIBCXX_USE_CXX11_ABI=0 -fPIC -std=c++11 -O3
+cuda_flags = -DTORCH_EXTENSION_NAME=pyda -DTORCH_API_INCLUDE_EXTENSION_H -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include/torch/csrc/api/include -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include/TH -isystem /opt/conda/lib/python3.6/site-packages/torch/lib/include/THC -isystem /usr/local/cuda/include -isystem /opt/conda/include/python3.6m -D_GLIBCXX_USE_CXX11_ABI=0 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --compiler-options '-fPIC' --expt-extended-lambda -std=c++11
+ldflags = -shared -L/usr/local/cuda/lib64 -lcudart
+
+rule compile
+  command = $cxx -MMD -MF $out.d $cflags -c $in -o $out
+  depfile = $out.d
+  deps = gcc
+
+rule cuda_compile
+  command = $nvcc $cuda_flags -c $in -o $out
+
+rule link
+  command = $cxx $in $ldflags -o $out
+
+build lib_da.o: compile /mnt/public/zqh_pytorch/paper/DilatedAttention/dilatedAttention/src/lib_da.cpp
+build da.cuda.o: cuda_compile /mnt/public/zqh_pytorch/paper/DilatedAttention/dilatedAttention/src/da.cu
+
+build pyda.so: link lib_da.o da.cuda.o
+
+default pyda.so
+
