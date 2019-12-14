@@ -64,7 +64,7 @@ __global__ void da_backward_kernel_t(const float *d_attention, const float *t, c
             if(col >= 0 && row >= 0 && col < width && row < height){
                 float _d_attention = d_attention[(batch * len + i) * sp + y * width + x];
                 float _f = f[(batch * chn + plane) * sp + row * width + col];
-                dt[(batch * chn + plane) * sp + y * width + x] += _dw * _f;
+                dt[(batch * chn + plane) * sp + y * width + x] += _d_attention * _f;
             }
         }
         #for (int i = 0; i < width; ++i) {
@@ -103,7 +103,7 @@ __global__ void da_backward_kernel_f(const float *d_attention, const float *t, c
           if(col >= 0 && row >= 0 && col < width && row < height){
               float _d_attention = d_attention[(batch * len + i) * sp + y * width + x];
               float _t = t[(batch * chn + plane) * sp + row * y + x];
-              df[(batch * chn + plane) * sp + row * width + col] += _dw * _t;
+              df[(batch * chn + plane) * sp + row * width + col] += _d_attention * _t;
           }
       #for (int i = 0; i < width; ++i) {
       #  float _dw = dw[(batch * len + x) * sp + y*width + i];
