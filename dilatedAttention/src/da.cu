@@ -207,20 +207,30 @@ __global__ void da_map_backward_kernel_g(const float *dout, const float *attenti
   if (x < width && y < height && plane < chn) {
 
     for (int batch = 0; batch < num; ++batch) {
-      for (int i = 0; i < width; ++i) {
-        float _dout = dout[(batch * chn + plane) * sp + y*width + i];
-        float _w = weight[(batch * len + x) * sp + y*width + i];
-        dg[(batch * chn + plane) * sp + y*width + x] += _dout * _w;
+      
+      for (int i = 0; i < len; ++i) {
+          int col = i % 3 - 1 + x;
+          int row = i / 3 - 1 + y;
+          if(col >= 0 && row >= 0 && col < width && row < height){
+            float _dout = dout[(batch * chn + plane) * sp + row*width + col];
+            float _attention = weight[(batch * len + i) * sp + row*width + col];
+            dg[(batch * chn + plane) * sp + y*width + x] += _dout * _attention;
+          }
+            
       }
+      #  float _dout = dout[(batch * chn + plane) * sp + y*width + i];
+      #  float _w = weight[(batch * len + x) * sp + y*width + i];
+      #  dg[(batch * chn + plane) * sp + y*width + x] += _dout * _w;
+      #}
 
-      for (int i = 0; i < height; ++i) {
-        if (i == y) continue;
-        int j = i>y ? y : y-1;
+      #for (int i = 0; i < height; ++i) {
+      #  if (i == y) continue;
+      #  int j = i>y ? y : y-1;
 
-        float _dout = dout[(batch * chn + plane) * sp + i*width + x];
-        float _w = weight[(batch * len + width + j) * sp + i*width + x];
-        dg[(batch * chn + plane) * sp + y*width + x] += _dout * _w;
-      }
+      #  float _dout = dout[(batch * chn + plane) * sp + i*width + x];
+      #  float _w = weight[(batch * len + width + j) * sp + i*width + x];
+      #  dg[(batch * chn + plane) * sp + y*width + x] += _dout * _w;
+      #}
     }
   }
 }
@@ -228,15 +238,15 @@ __global__ void da_map_backward_kernel_g(const float *dout, const float *attenti
 /*
  * Implementations
  */
-extern "C" int _ca_forward_cuda(int N, int C, int H, int W, const float *t, 
-                                const float *f, float *weight, cudaStream_t stream) {
+extern "C" int _da_forward_cuda(int N, int C, int H, int W, const float *t, 
+                                const float *f, float *attention, cudaStream_t stream) {
   // Run kernel
   dim3 threads(32, 32);
   int d1 = (W+threads.x-1)/threads.x;
   int d2 = (H+threads.y-1)/threads.y;
-  int d3 = H+W;
+  int d3 = 9;
   dim3 blocks(d1, d2, d3);
-  ca_forward_kernel<<<blocks, threads, 0, stream>>>(t, f, weight, N, C, H, W);
+  da_forward_kernel<<<blocks, threads, 0, stream>>>(t, f, attention, N, C, H, W);
 
   // Check for errors
   cudaError_t err = cudaGetLastError();
@@ -247,7 +257,7 @@ extern "C" int _ca_forward_cuda(int N, int C, int H, int W, const float *t,
 }
 
 
-extern "C" int _ca_backward_cuda(int N, int C, int H, int W, const float *dw, const float *t, const float *f, float *dt, float *df, cudaStream_t stream) {
+extern "C" int _da_backward_cuda(int N, int C, int H, int W, const float *d_attention, const float *t, const float *f, float *dt, float *df, cudaStream_t stream) {
   // Run kernel
   dim3 threads(32, 32);
   int d1 = (W+threads.x-1)/threads.x;
@@ -255,8 +265,8 @@ extern "C" int _ca_backward_cuda(int N, int C, int H, int W, const float *dw, co
   int d3 = C;
   dim3 blocks(d1, d2, d3);
   // printf("%f\n", dw[0]);
-  ca_backward_kernel_t<<<blocks, threads, 0, stream>>>(dw, t, f, dt, N, C, H, W);
-  ca_backward_kernel_f<<<blocks, threads, 0, stream>>>(dw, t, f, df, N, C, H, W);
+  da_backward_kernel_t<<<blocks, threads, 0, stream>>>(d_attention, t, f, dt, N, C, H, W);
+  da_backward_kernel_f<<<blocks, threads, 0, stream>>>(d_attention, N, C, H, W);
 
   // Check for errors
   cudaError_t err = cudaGetLastError();
@@ -267,11 +277,11 @@ extern "C" int _ca_backward_cuda(int N, int C, int H, int W, const float *dw, co
 }
 
 
-extern "C" int _ca_map_forward_cuda(int N, int C, int H, int W, const float *weight, const float *g, float *out, cudaStream_t stream) {
+extern "C" int _da_map_forward_cuda(int N, int C, int H, int W, const float *attention, const float *g, float *out, cudaStream_t stream) {
   // Run kernel
   dim3 threads(32, 32);
   dim3 blocks((W+threads.x-1)/threads.x, (H+threads.y-1)/threads.y, C);
-  ca_map_forward_kernel<<<blocks, threads, 0, stream>>>(weight, g, out, N, C, H, W);
+  da_map_forward_kernel<<<blocks, threads, 0, stream>>>(attention, g, out, N, C, H, W);
 
   // Check for errors
   cudaError_t err = cudaGetLastError();
@@ -281,18 +291,18 @@ extern "C" int _ca_map_forward_cuda(int N, int C, int H, int W, const float *wei
     return 1;
 }
 
-extern "C" int _ca_map_backward_cuda(int N, int C, int H, int W, const float *dout, const float *weight, const float *g, float *dw, float *dg, cudaStream_t stream) {
+extern "C" int _da_map_backward_cuda(int N, int C, int H, int W, const float *dout, const float *attention, const float *g, float *d_attention, float *dg, cudaStream_t stream) {
   // Run kernel
   dim3 threads(32, 32);
   int d1 = (W+threads.x-1)/threads.x;
   int d2 = (H+threads.y-1)/threads.y;
   int d3 = H+W;
   dim3 blocks(d1, d2, d3);
-  ca_map_backward_kernel_w<<<blocks, threads, 0, stream>>>(dout, weight, g, dw, N, C, H, W);
+  da_map_backward_kernel_w<<<blocks, threads, 0, stream>>>(dout, attention, g, d_attention, N, C, H, W);
 
   d3 = C;
   blocks = dim3(d1, d2, d3);
-  ca_map_backward_kernel_g<<<blocks, threads, 0, stream>>>(dout, weight, g, dg, N, C, H, W);
+  da_map_backward_kernel_g<<<blocks, threads, 0, stream>>>(dout, attention, g, dg, N, C, H, W);
 
   // Check for errors
   cudaError_t err = cudaGetLastError();
